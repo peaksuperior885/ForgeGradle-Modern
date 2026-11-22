@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'java-gradle-plugin'
     id 'idea'
     id 'eclipse'
     id 'maven-publish'
@@ -180,6 +181,15 @@ license {
     newLine = false
 }
 
+gradlePlugin {
+    plugins {
+        forgeGradle {
+            id = 'dev.peak885.gradle.forge'
+            implementationClass = 'net.minecraftforge.gradle.user.patcherUser.forge.ForgePlugin'
+        }
+    }
+}
+
 publishing {
     publications {
         forgeGradle(MavenPublication) {
@@ -204,4 +214,8 @@ publishing {
             url = layout.buildDirectory.dir('maven-repo')
         }
     }
+}
+
+tasks.named('publish') {
+    dependsOn tasks.named('shadowJar')
 }
