@@ -42,6 +42,7 @@ import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.TaskAction;
 
 import com.google.common.base.Charsets;
@@ -70,37 +71,22 @@ import net.minecraftforge.gradle.util.json.MCInjectorStruct.InnerClass;
 
 public class DeobfuscateJar extends CachedTask
 {
-    @InputFile
-    @Optional
-    private Object            fieldCsv;
-    @InputFile
-    @Optional
-    private Object            methodCsv;
+    private Object fieldCsv;
+    private Object methodCsv;
 
-    @InputFile
-    private Object            inJar;
+    private Object inJar;
+    private Object srg;
+    private Object exceptorCfg;
+    private Object exceptorJson;
 
-    @InputFile
-    private Object            srg;
+    private boolean applyMarkers = false;
+    private boolean failOnAtError = true;
 
-    @InputFile
-    private Object            exceptorCfg;
+    private Object outJar;
 
-    @InputFile
-    private Object            exceptorJson;
+    private ArrayList<Object> ats = Lists.newArrayList();
 
-    @Input
-    private boolean           applyMarkers  = false;
-
-    @Input
-    private boolean           failOnAtError = true;
-
-    private Object            outJar;
-
-    @InputFiles
-    private ArrayList<Object> ats           = Lists.newArrayList();
-
-    private Object            log;
+    private Object log;
 
     @TaskAction
     public void doTask() throws IOException
@@ -175,7 +161,6 @@ public class DeobfuscateJar extends CachedTask
             }
 
             // TODO: add info for disabling
-
             throw new RuntimeException("Your Access Transformers be broke!");
         }
     }
@@ -193,20 +178,20 @@ public class DeobfuscateJar extends CachedTask
             t = ACC_PROTECTED;
 
         switch (access & 7)
-            {
-                case ACC_PRIVATE:
-                    ret |= t;
-                    break;
-                case 0:
-                    ret |= (t != ACC_PRIVATE ? t : 0);
-                    break;
-                case ACC_PROTECTED:
-                    ret |= (t != ACC_PRIVATE && t != 0 ? t : ACC_PROTECTED);
-                    break;
-                case ACC_PUBLIC:
-                    ret |= ACC_PUBLIC;
-                    break;
-            }
+        {
+            case ACC_PRIVATE:
+                ret |= t;
+                break;
+            case 0:
+                ret |= (t != ACC_PRIVATE ? t : 0);
+                break;
+            case ACC_PROTECTED:
+                ret |= (t != ACC_PRIVATE && t != 0 ? t : ACC_PROTECTED);
+                break;
+            case ACC_PUBLIC:
+                ret |= ACC_PUBLIC;
+                break;
+        }
 
         if (target.endsWith("-f"))
             ret &= ~ACC_FINAL;
@@ -292,8 +277,7 @@ public class DeobfuscateJar extends CachedTask
                 json,
                 isApplyMarkers(),
                 true,
-                LVTNaming.LVT
-                );
+                LVTNaming.LVT);
     }
 
     private void removeUnknownClasses(File inJar, Map<String, MCInjectorStruct> config) throws IOException
@@ -339,6 +323,7 @@ public class DeobfuscateJar extends CachedTask
         }
     }
 
+    @InputFile
     public File getExceptorCfg()
     {
         return getProject().file(exceptorCfg);
@@ -349,6 +334,8 @@ public class DeobfuscateJar extends CachedTask
         this.exceptorCfg = exceptorCfg;
     }
 
+    @InputFile
+    @Optional
     public File getExceptorJson()
     {
         if (exceptorJson == null)
@@ -362,6 +349,7 @@ public class DeobfuscateJar extends CachedTask
         this.exceptorJson = exceptorJson;
     }
 
+    @Input
     public boolean isApplyMarkers()
     {
         return applyMarkers;
@@ -372,6 +360,7 @@ public class DeobfuscateJar extends CachedTask
         this.applyMarkers = applyMarkers;
     }
 
+    @Input
     public boolean isFailOnAtError()
     {
         return failOnAtError;
@@ -382,6 +371,7 @@ public class DeobfuscateJar extends CachedTask
         this.failOnAtError = failOnAtError;
     }
 
+    @InputFile
     public File getInJar()
     {
         return getProject().file(inJar);
@@ -392,6 +382,8 @@ public class DeobfuscateJar extends CachedTask
         this.inJar = inJar;
     }
 
+    @Optional
+    @OutputFile
     public File getLog()
     {
         if (log == null)
@@ -405,6 +397,7 @@ public class DeobfuscateJar extends CachedTask
         this.log = log;
     }
 
+    @InputFile
     public File getSrg()
     {
         return getProject().file(srg);
@@ -437,6 +430,7 @@ public class DeobfuscateJar extends CachedTask
      * @return Object that will resolve to
      */
     @SuppressWarnings("serial")
+    @Internal
     public Closure<File> getDelayedOutput()
     {
         return new Closure<File>(DeobfuscateJar.class) {
@@ -455,7 +449,7 @@ public class DeobfuscateJar extends CachedTask
     {
         ats.add(obj);
     }
-    
+
     /**
      * adds access transformers to the deobfuscation of this
      * @param objs access transformers
@@ -467,7 +461,7 @@ public class DeobfuscateJar extends CachedTask
             ats.add(object);
         }
     }
-    
+
     /**
      * adds access transformers to the deobfuscation of this
      * @param objs access transformers
@@ -479,12 +473,15 @@ public class DeobfuscateJar extends CachedTask
             ats.add(object);
         }
     }
-    
+
+    @InputFiles
     public FileCollection getAts()
     {
         return getProject().files(ats.toArray());
     }
 
+    @Optional
+    @InputFile
     public File getFieldCsv()
     {
         return fieldCsv == null ? null : getProject().file(fieldCsv);
@@ -495,6 +492,8 @@ public class DeobfuscateJar extends CachedTask
         this.fieldCsv = fieldCsv;
     }
 
+    @Optional
+    @InputFile
     public File getMethodCsv()
     {
         return methodCsv == null ? null : getProject().file(methodCsv);
@@ -507,8 +506,8 @@ public class DeobfuscateJar extends CachedTask
 
     private static final class ErroringRemappingAccessMap extends AccessMap
     {
-        private final Map<String, String> renames     = Maps.newHashMap();
-        public final Map<String, String>  brokenLines = Maps.newHashMap();
+        private final Map<String, String> renames = Maps.newHashMap();
+        public final Map<String, String> brokenLines = Maps.newHashMap();
 
         public ErroringRemappingAccessMap(File[] renameCsvs) throws IOException
         {
@@ -582,9 +581,9 @@ public class DeobfuscateJar extends CachedTask
         @Override
         protected void accessApplied(String key, int oldAccess, int newAccess)
         {
-            // if the access' are equal, then the line is broken, and we dont want to remove it.\
+            // if the access' are equal, then the line is broken, and we dont want to remove it.
             // or not... it still applied.. just applied twice somehow.. not an issue.
-//            if (oldAccess != newAccess)
+            // if (oldAccess != newAccess)
             {
                 // key added before is in format: package/class{method/field sig}
                 // and the key here is in format: package/class {method/field sig}

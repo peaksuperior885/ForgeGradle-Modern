@@ -36,38 +36,26 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
-import org.gradle.api.tasks.ParallelizableTask;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.util.PatternFilterable;
 import org.gradle.api.tasks.util.PatternSet;
 
-@ParallelizableTask
 public class ExtractConfigTask extends CachedTask implements PatternFilterable
 {
-
-    @Input
-    private String     config;
-
-    @Input
-    private PatternSet patternSet       = new PatternSet();
-
-    @Input
-    private boolean    includeEmptyDirs = true;
-
-    @Input
-    @Optional
-    private boolean    clean            = false;
+    private String config;
+    private PatternSet patternSet = new PatternSet();
+    private boolean includeEmptyDirs = true;
+    private boolean clean = false;
 
     @Cached
-    @OutputDirectory
-    private Object     destinationDir   = null;
+    private Object destinationDir = null;
 
     @TaskAction
     public void doTask() throws IOException
     {
         File dest = getDestinationDir();
 
-        if (shouldClean())
+        if (isClean())
         {
             delete(dest);
         }
@@ -93,6 +81,7 @@ public class ExtractConfigTask extends CachedTask implements PatternFilterable
         f.delete();
     }
 
+    @Input
     public String getConfig()
     {
         return config;
@@ -109,17 +98,19 @@ public class ExtractConfigTask extends CachedTask implements PatternFilterable
     {
         return getProject().getConfigurations().getByName(config);
     }
-    
+
     public void setDestinationDir(Object dest)
     {
         this.destinationDir = dest;
     }
 
+    @OutputDirectory
     public File getDestinationDir()
     {
         return getProject().file(destinationDir);
     }
 
+    @Input
     public boolean isIncludeEmptyDirs()
     {
         return includeEmptyDirs;
@@ -136,7 +127,8 @@ public class ExtractConfigTask extends CachedTask implements PatternFilterable
         return false;
     }
 
-    public boolean shouldClean()
+    @Input
+    public boolean isClean()
     {
         return clean;
     }
@@ -172,12 +164,14 @@ public class ExtractConfigTask extends CachedTask implements PatternFilterable
     }
 
     @Override
+    @Input
     public Set<String> getExcludes()
     {
         return patternSet.getExcludes();
     }
 
     @Override
+    @Input
     public Set<String> getIncludes()
     {
         return patternSet.getIncludes();

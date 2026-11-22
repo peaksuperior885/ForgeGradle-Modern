@@ -52,21 +52,13 @@ import com.google.common.io.Files;
 
 public class ApplyS2STask extends DefaultTask
 {
-    @InputFiles
     private final List<Object> srg = new LinkedList<Object>();
-
-    @Optional
-    @InputFiles
     private final List<Object> exc = new LinkedList<Object>();
 
-    @InputFile
     private Object rangeMap;
-
-    @Optional
-    @InputFile
     private Object excModifiers;
 
-    // stuff defined on the tasks..
+    // Stuff defined on the tasks.
     private final List<Object> in = new LinkedList<Object>();
     private Object out;
 
@@ -76,6 +68,7 @@ public class ApplyS2STask extends DefaultTask
         File out = getOut();
         File rangemap = getRangeMap();
         File rangelog = File.createTempFile("rangelog", ".txt", this.getTemporaryDir());
+
         FileCollection srg = getSrgs();
         FileCollection exc = getExcs();
 
@@ -83,18 +76,20 @@ public class ApplyS2STask extends DefaultTask
 
         if (in.size() == 1)
         {
-            // just 1 supplier.
+            // Just one supplier.
             inSup = getInput(in.get(0));
         }
         else
         {
-            // multinput
+            // Multiple inputs.
             inSup = new SequencedInputSupplier();
+
             for (Object o : in)
                 ((SequencedInputSupplier) inSup).add(getInput(o));
         }
 
         OutputSupplier outSup;
+
         if (in.size() == 1 && in.get(0).equals(out) && in instanceof FolderSupplier)
             outSup = (OutputSupplier) inSup;
         else
@@ -108,7 +103,6 @@ public class ApplyS2STask extends DefaultTask
 
         getLogger().lifecycle("remapping source...");
         applyRangeMap(inSup, outSup, srg, exc, rangemap, rangelog);
-
 
         inSup.close();
         outSup.close();
@@ -140,30 +134,26 @@ public class ApplyS2STask extends DefaultTask
         if (f.isDirectory())
             return new FolderSupplier(f);
         else if (f.getPath().endsWith(".jar") || f.getPath().endsWith(".zip"))
-        {
             return new ZipOutputSupplier(f);
-        }
         else
             throw new IllegalArgumentException("Can only make suppliers out of directories and zips right now!");
     }
 
-    private void applyRangeMap(InputSupplier inSup, OutputSupplier outSup, FileCollection srg, FileCollection exc, File rangeMap, File rangeLog) throws IOException
+    private void applyRangeMap(InputSupplier inSup, OutputSupplier outSup,
+                               FileCollection srg, FileCollection exc, File rangeMap, File rangeLog) throws IOException
     {
         RangeApplier app = new RangeApplier().readSrg(srg.getFiles());
 
         app.setOutLogger(Constants.getTaskLogStream(getProject(), this.getName() + ".log"));
 
         if (!exc.isEmpty())
-        {
             app.readParamMap(exc);
-        }
 
-        // for debugging.
+        // For debugging.
         app.dumpRenameMap();
 
         app.remapSources(inSup, outSup, rangeMap, false);
     }
-
 
     private FileCollection generateDefaultExc(File modifiers, FileCollection currentExcs, FileCollection srgs)
     {
@@ -175,15 +165,18 @@ public class ApplyS2STask extends DefaultTask
         try
         {
             getLogger().debug("  Reading Modifiers:");
+
             for (String line : Files.readLines(modifiers, Charset.defaultCharset()))
             {
                 if (Strings.isNullOrEmpty(line) || line.startsWith("#"))
                     continue;
+
                 String[] args = line.split("=");
                 statics.put(args[0], "static".equals(args[1]));
             }
 
             File temp = new File(this.getTemporaryDir(), "generated.exc");
+
             if (temp.exists())
                 temp.delete();
 
@@ -191,9 +184,11 @@ public class ApplyS2STask extends DefaultTask
             temp.createNewFile();
 
             BufferedWriter writer = Files.newWriter(temp, Charsets.UTF_8);
+
             for (File f : srgs)
             {
                 getLogger().debug("  Reading SRG: " + f);
+
                 for (String line : Files.readLines(f, Charset.defaultCharset()))
                 {
                     if (Strings.isNullOrEmpty(line) || line.startsWith("#"))
@@ -201,44 +196,57 @@ public class ApplyS2STask extends DefaultTask
 
                     String type = line.substring(0, 2);
                     line = line.substring(4);
+
                     String[] pts = line.split(" ");
 
                     if (type.equals("MD"))
                     {
                         String name = pts[2].substring(pts[2].lastIndexOf('/') + 1);
+
                         if (name.startsWith("func_"))
                         {
                             Boolean isStatic = statics.get(pts[0] + pts[1]);
+
                             getLogger().debug("    MD: " + line);
+
                             name = name.substring(5, name.indexOf('_', 5));
 
                             List<String> params = Lists.newArrayList();
+
                             int idx = isStatic == null || !isStatic.booleanValue() ? 1 : 0;
+
                             getLogger().debug("      Name: " + name + " Idx: " + idx);
 
                             int i = 0;
                             boolean inArray = false;
+
                             while (i < pts[1].length())
                             {
                                 char c = pts[1].charAt(i);
 
                                 switch (c)
                                 {
-                                    case '(': //Start
+                                    case '(':
                                         break;
-                                    case ')': //End
+
+                                    case ')':
                                         i = pts[1].length();
                                         break;
-                                    case '[': //Array
+
+                                    case '[':
                                         inArray = true;
                                         break;
-                                    case 'L': //Class
+
+                                    case 'L':
                                         String right = pts[1].substring(i);
                                         String className = right.substring(1, right.indexOf(';'));
+
                                         i += className.length() + 1;
+
                                         params.add("p_" + name + "_" + idx++ + "_");
                                         inArray = false;
                                         break;
+
                                     case 'B':
                                     case 'C':
                                     case 'D':
@@ -248,12 +256,18 @@ public class ApplyS2STask extends DefaultTask
                                     case 'S':
                                     case 'Z':
                                         params.add("p_" + name + "_" + idx++ + "_");
-                                        if ((c == 'D' || c == 'J') && !inArray) idx++;
+
+                                        if ((c == 'D' || c == 'J') && !inArray)
+                                            idx++;
+
                                         inArray = false;
                                         break;
+
                                     default:
-                                        throw new IllegalArgumentException("Unrecognized type in method descriptor: " + c);
+                                        throw new IllegalArgumentException(
+                                                "Unrecognized type in method descriptor: " + c);
                                 }
+
                                 i++;
                             }
 
@@ -271,10 +285,12 @@ public class ApplyS2STask extends DefaultTask
                     }
                 }
             }
+
             writer.close();
 
             List<File> files = Lists.newArrayList();
-            files.add(temp);//Make sure the new one is first to allow others to override
+            files.add(temp); // Make sure the new one is first to allow others to override.
+
             for (File f : currentExcs)
                 files.add(f);
 
@@ -288,12 +304,13 @@ public class ApplyS2STask extends DefaultTask
         return null;
     }
 
-    @InputFiles @SkipWhenEmpty
+    @InputFiles
+    @SkipWhenEmpty
     public FileCollection getSources()
     {
         FileCollection collection = null;
 
-        for (Object o: this.in)
+        for (Object o : this.in)
         {
             FileCollection col;
 
@@ -306,23 +323,15 @@ public class ApplyS2STask extends DefaultTask
                 File f = getProject().file(o);
 
                 if (f.isDirectory())
-                {
                     col = getProject().fileTree(f);
-                }
                 else
-                {
                     col = getProject().files(f);
-                }
             }
 
             if (collection == null)
-            {
                 collection = col;
-            }
             else
-            {
                 collection = collection.plus(col);
-            }
         }
 
         return collection;
@@ -333,16 +342,19 @@ public class ApplyS2STask extends DefaultTask
         this.in.add(in);
     }
 
-    @OutputFiles @Optional
+    @OutputFiles
+    @Optional
     public FileCollection getOuts()
     {
         File outFile = getOut();
+
         if (outFile.isDirectory())
             return getProject().fileTree(outFile);
         else
             return getProject().files(outFile);
     }
 
+    @Internal
     public File getOut()
     {
         return getProject().file(out);
@@ -353,6 +365,7 @@ public class ApplyS2STask extends DefaultTask
         this.out = out;
     }
 
+    @InputFiles
     public FileCollection getSrgs()
     {
         return getProject().files(srg);
@@ -373,6 +386,8 @@ public class ApplyS2STask extends DefaultTask
         this.srg.add(srg);
     }
 
+    @InputFiles
+    @Optional
     public FileCollection getExcs()
     {
         return getProject().files(exc);
@@ -393,6 +408,7 @@ public class ApplyS2STask extends DefaultTask
         this.exc.add(exc);
     }
 
+    @InputFile
     public File getRangeMap()
     {
         return getProject().file(rangeMap);
@@ -408,6 +424,8 @@ public class ApplyS2STask extends DefaultTask
         this.excModifiers = value;
     }
 
+    @InputFile
+    @Optional
     public File getExcModifiers()
     {
         return this.excModifiers == null ? null : this.getProject().file(excModifiers);

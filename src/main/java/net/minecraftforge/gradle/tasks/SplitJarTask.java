@@ -46,19 +46,15 @@ import com.google.common.base.Throwables;
 
 public class SplitJarTask extends CachedTask implements PatternFilterable
 {
-    @InputFile
-    private Object     inJar;
+    private Object inJar;
 
-    @Input
     private PatternSet pattern = new PatternSet();
 
     @Cached
-    @OutputFile
-    private Object     outFirst;
+    private Object outFirst;
 
     @Cached
-    @OutputFile
-    private Object     outSecond;
+    private Object outSecond;
 
     @TaskAction
     public void doTask() throws IOException
@@ -119,6 +115,7 @@ public class SplitJarTask extends CachedTask implements PatternFilterable
         zout2.close();
     }
 
+    @InputFile
     public File getInJar()
     {
         return getProject().file(inJar);
@@ -129,6 +126,7 @@ public class SplitJarTask extends CachedTask implements PatternFilterable
         this.inJar = inJar;
     }
 
+    @OutputFile
     public File getOutFirst()
     {
         return getProject().file(outFirst);
@@ -139,6 +137,7 @@ public class SplitJarTask extends CachedTask implements PatternFilterable
         this.outFirst = outFirst;
     }
 
+    @OutputFile
     public File getOutSecond()
     {
         return getProject().file(outSecond);
@@ -174,12 +173,14 @@ public class SplitJarTask extends CachedTask implements PatternFilterable
         return pattern.exclude(arg0);
     }
 
+    @Input
     @Override
     public Set<String> getExcludes()
     {
         return pattern.getExcludes();
     }
 
+    @Input
     @Override
     public Set<String> getIncludes()
     {

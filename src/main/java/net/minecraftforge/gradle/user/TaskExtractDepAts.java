@@ -34,6 +34,7 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.TaskAction;
 
@@ -45,18 +46,16 @@ import com.google.common.io.Files;
 
 public class TaskExtractDepAts extends DefaultTask
 {
-    @Input
     private List<String> configurations = Lists.newArrayList();
-    @OutputDirectory
-    private Object               outputDir;
+    private Object outputDir;
 
     @TaskAction
     public void doTask() throws IOException
     {
         FileCollection col = getCollections();
         File outputDir = getOutputDir();
-        outputDir.mkdirs(); // make sur eit exists
-        
+        outputDir.mkdirs(); // make sure it exists
+
         // make a list of things to delete...
         List<File> toDelete = Lists.newArrayList(outputDir.listFiles(new FileFilter() {
             @Override
@@ -84,25 +83,28 @@ public class TaskExtractDepAts extends DefaultTask
                     for (String at : splitter.split(atString.trim()))
                     {
                         // append _at.cfg just in case its not there already...
-                        // also differentiate the file name, in cas the same At comes from multiple jars.. who knows why...
+                        // also differentiate the file name, in case the same At comes from multiple jars.. who knows why...
                         File outFile = new File(outputDir, at + "_" + Files.getNameWithoutExtension(f.getName()) + "_at.cfg");
                         toDelete.remove(outFile);
-                        
+
                         JarEntry entry = jar.getJarEntry("META-INF/" + at);
 
-                        InputStream istream = jar.getInputStream(entry);
-                        OutputStream ostream = new FileOutputStream(outFile);
-                        ByteStreams.copy(istream, ostream);
+                        if (entry != null)
+                        {
+                            InputStream istream = jar.getInputStream(entry);
+                            OutputStream ostream = new FileOutputStream(outFile);
+                            ByteStreams.copy(istream, ostream);
 
-                        istream.close();
-                        ostream.close();
+                            istream.close();
+                            ostream.close();
+                        }
                     }
                 }
             }
 
             jar.close();
         }
-        
+
         // remove the files that shouldnt be there...
         for (File f : toDelete)
         {
@@ -110,11 +112,23 @@ public class TaskExtractDepAts extends DefaultTask
         }
     }
 
+    @Input
+    public List<String> getConfigurations()
+    {
+        return configurations;
+    }
+
+    public void setConfigurations(List<String> configurations)
+    {
+        this.configurations = configurations;
+    }
+
+    @Internal
     public FileCollection getCollections()
     {
-    	List<Configuration> configs = Lists.newArrayListWithCapacity(configurations.size());
-    	for (String s : configurations)
-    		configs.add(getProject().getConfigurations().getByName(s));
+        List<Configuration> configs = Lists.newArrayListWithCapacity(configurations.size());
+        for (String s : configurations)
+            configs.add(getProject().getConfigurations().getByName(s));
         return getProject().files(configs);
     }
 
@@ -123,6 +137,7 @@ public class TaskExtractDepAts extends DefaultTask
         configurations.add(col);
     }
 
+    @OutputDirectory
     public File getOutputDir()
     {
         return getProject().file(outputDir);

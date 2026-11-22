@@ -27,6 +27,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 
+import net.minecraftforge.gradle.mixin.MixinExtension;
+import net.minecraftforge.gradle.mixin.MixinIntegration;
 import org.gradle.api.Action;
 import org.gradle.api.tasks.bundling.Jar;
 
@@ -49,6 +51,11 @@ public class ForgePlugin extends PatcherUserBasePlugin<ForgeExtension>
     protected void applyUserPlugin()
     {
         super.applyUserPlugin();
+
+        final MixinExtension mixinExtension =
+                project.getExtensions().create("mixin", MixinExtension.class);
+
+        MixinIntegration.configure(project, mixinExtension);
 
         // setup reobf
         {

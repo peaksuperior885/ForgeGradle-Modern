@@ -568,14 +568,22 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         project.apply(ImmutableMap.of("plugin", plugin));
     }
 
-    public MavenArtifactRepository addMavenRepo(Project proj, final String name, final String url)
+    protected MavenArtifactRepository addMavenRepo(Project proj, final String name, final String url)
     {
-        return proj.getRepositories().maven(new Action<MavenArtifactRepository>() {
-            @Override
+        return proj.getRepositories().maven(new Action<MavenArtifactRepository>()
+        {
             public void execute(MavenArtifactRepository repo)
             {
                 repo.setName(name);
                 repo.setUrl(url);
+
+                if ("forge".equals(name))
+                {
+                    repo.metadataSources(sources -> {
+                        sources.mavenPom();
+                        sources.artifact();
+                    });
+                }
             }
         });
     }

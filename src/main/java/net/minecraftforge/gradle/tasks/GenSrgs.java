@@ -57,7 +57,7 @@ public class GenSrgs extends CachedTask
     @Cached @OutputFile private DelayedFile notchToSrg;
     @Cached @OutputFile private DelayedFile notchToMcp;
     @Cached @OutputFile private DelayedFile mcpToNotch;
-    @Cached @OutputFile private DelayedFile SrgToMcp;
+    @Cached private DelayedFile SrgToMcp;
     @Cached @OutputFile private DelayedFile mcpToSrg;
     @Cached @OutputFile private DelayedFile srgExc;
     @Cached @OutputFile private DelayedFile mcpExc;
@@ -429,7 +429,8 @@ public class GenSrgs extends CachedTask
     {
         this.notchToMcp = deobfSrg;
     }
-    
+
+    @OutputFile
     public File getSrgToMcp()
     {
         return SrgToMcp.call();

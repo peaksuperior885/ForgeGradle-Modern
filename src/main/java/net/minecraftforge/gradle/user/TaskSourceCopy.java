@@ -37,6 +37,7 @@ import org.gradle.api.file.FileTree;
 import org.gradle.api.file.SourceDirectorySet;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.util.PatternSet;
@@ -46,28 +47,24 @@ import com.google.common.io.Files;
 
 public class TaskSourceCopy extends DefaultTask
 {
-    @InputFiles
-    SourceDirectorySet      source;
+    private SourceDirectorySet source;
 
-    @Input
-    HashMap<String, Object> replacements = new HashMap<String, Object>();
+    private HashMap<String, Object> replacements = new HashMap<String, Object>();
 
-    @Input
-    ArrayList<String>       includes     = new ArrayList<String>();
+    private ArrayList<String> includes = new ArrayList<String>();
 
-    @OutputDirectory
-    Object             output;
+    private Object output;
 
     @SuppressWarnings("unchecked")
     @TaskAction
     public void doTask() throws IOException
     {
-        // get the include/exclude patterns from the source (this is different than what's returned by getFilter)
+        // Get the include/exclude patterns from the source.
         PatternSet patterns = new PatternSet();
         patterns.setIncludes(source.getIncludes());
         patterns.setExcludes(source.getExcludes());
 
-        // get output
+        // Get output.
         File out = getOutput();
         if (out.exists())
             deleteDir(out);
@@ -75,53 +72,60 @@ public class TaskSourceCopy extends DefaultTask
         out.mkdirs();
         out = out.getCanonicalFile();
 
-        // resolve replacements
+        // Resolve replacements.
         HashMap<String, String> repl = new HashMap<String, String>(replacements.size());
-        for (Entry<String, Object> e : replacements.entrySet())
-        {
-            if (e.getKey() == null || e.getValue() == null)
-                continue; // we dont deal with nulls.
-            
-            Object val = e.getValue();
-            while (val instanceof Closure)
-                val = ((Closure<Object>) val).call();
 
-            repl.put(Pattern.quote(e.getKey()), val.toString());
+        for (Entry<String, Object> entry : replacements.entrySet())
+        {
+            if (entry.getKey() == null || entry.getValue() == null)
+                continue;
+
+            Object value = entry.getValue();
+
+            while (value instanceof Closure)
+                value = ((Closure<Object>) value).call();
+
+            repl.put(Pattern.quote(entry.getKey()), value.toString());
         }
 
         getLogger().debug("REPLACE >> " + repl);
 
-        // start traversing tree
+        // Start traversing the source directories.
         for (DirectoryTree dirTree : source.getSrcDirTrees())
         {
             File dir = dirTree.getDir();
             getLogger().debug("PARSING DIR >> " + dir);
 
-            // handle nonexistant srcDirs
+            // Handle nonexistent source directories.
             if (!dir.exists() || !dir.isDirectory())
                 continue;
-            else
-                dir = dir.getCanonicalFile();
 
-            // this could be written as .matching(source), but it doesn't actually work
-            // because later on gradle casts it directly to PatternSet and crashes
-            FileTree tree = getProject().fileTree(dir).matching(source.getFilter()).matching(patterns);
+            dir = dir.getCanonicalFile();
+
+            // Preserve the original source filtering behaviour.
+            FileTree tree = getProject()
+                    .fileTree(dir)
+                    .matching(source.getFilter())
+                    .matching(patterns);
 
             for (File file : tree)
             {
                 File dest = getDest(file, dir, out);
+
                 dest.getParentFile().mkdirs();
                 dest.createNewFile();
 
                 if (isIncluded(file))
                 {
                     getLogger().debug("PARSING FILE IN >> " + file);
+
                     String text = Files.toString(file, Charsets.UTF_8);
 
-                    for (Entry<String, String> entry : repl.entrySet())
-                        text = text.replaceAll(entry.getKey(), entry.getValue());
+                    for (Entry<String, String> replacement : repl.entrySet())
+                        text = text.replaceAll(replacement.getKey(), replacement.getValue());
 
                     getLogger().debug("PARSING FILE OUT >> " + dest);
+
                     Files.write(text, dest, Charsets.UTF_8);
                 }
                 else
@@ -144,6 +148,7 @@ public class TaskSourceCopy extends DefaultTask
             return true;
 
         String path = file.getCanonicalPath().replace('\\', '/');
+
         for (String include : includes)
         {
             if (path.endsWith(include.replace('\\', '/')))
@@ -158,24 +163,27 @@ public class TaskSourceCopy extends DefaultTask
         if (dir.exists())
         {
             File[] files = dir.listFiles();
-            if (null != files)
+
+            if (files != null)
             {
-                for (int i = 0; i < files.length; i++)
+                for (File file : files)
                 {
-                    if (files[i].isDirectory())
+                    if (file.isDirectory())
                     {
-                        deleteDir(files[i]);
+                        deleteDir(file);
                     }
                     else
                     {
-                        files[i].delete();
+                        file.delete();
                     }
                 }
             }
         }
-        return (dir.delete());
+
+        return dir.delete();
     }
 
+    @OutputDirectory
     public File getOutput()
     {
         return getProject().file(output);
@@ -191,14 +199,15 @@ public class TaskSourceCopy extends DefaultTask
         this.source = source;
     }
 
+    @InputFiles
     public FileCollection getSource()
     {
         return source;
     }
 
-    public void replace(String key, Object val)
+    public void replace(String key, Object value)
     {
-        replacements.put(key, val);
+        replacements.put(key, value);
     }
 
     public void replace(Map<String, Object> map)
@@ -206,6 +215,7 @@ public class TaskSourceCopy extends DefaultTask
         replacements.putAll(map);
     }
 
+    @Input
     public HashMap<String, Object> getReplacements()
     {
         return replacements;
@@ -221,6 +231,17 @@ public class TaskSourceCopy extends DefaultTask
         includes.addAll(strs);
     }
 
+    @Input
+    public ArrayList<String> getIncludes()
+    {
+        return includes;
+    }
+
+    /**
+     * @deprecated Use getIncludes() instead.
+     */
+    @Deprecated
+    @Internal
     public ArrayList<String> getIncudes()
     {
         return includes;

@@ -61,18 +61,17 @@ import net.minecraftforge.gradle.util.caching.CachedTask;
 public class TaskApplyBinPatches extends CachedTask
 {
     //@formatter:off
-    @InputFile  Object inJar;
-    @InputFile  Object classesJar;
-    @InputFile  Object resourcesJar;
-    @InputFile  Object patches;
+    private Object inJar;
+    private Object classesJar;
+    private Object resourcesJar;
+    private Object patches;
     //@formatter:on
 
-    @OutputFile
     @Cached
-    Object                              outJar;
+    private Object outJar;
 
     private HashMap<String, ClassPatch> patchlist = Maps.newHashMap();
-    private GDiffPatcher                patcher   = new GDiffPatcher();
+    private GDiffPatcher patcher = new GDiffPatcher();
 
     @TaskAction
     public void doTask() throws IOException
@@ -86,7 +85,8 @@ public class TaskApplyBinPatches extends CachedTask
 
         ZipFile in = new ZipFile(getInJar());
         ZipInputStream classesIn = new ZipInputStream(new FileInputStream(getClassJar()));
-        final ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(getOutJar())));
+        final ZipOutputStream out = new ZipOutputStream(
+                new BufferedOutputStream(new FileOutputStream(getOutJar())));
         final HashSet<String> entries = new HashSet<String>();
 
         try
@@ -113,12 +113,18 @@ public class TaskApplyBinPatches extends CachedTask
 
                     if (patch != null)
                     {
-                        log("\t%s (%s) (input size %d)", patch.targetClassName, patch.sourceClassName, data.length);
+                        log("\t%s (%s) (input size %d)",
+                                patch.targetClassName, patch.sourceClassName, data.length);
+
                         int inputChecksum = adlerHash(data);
                         if (patch.inputChecksum != inputChecksum)
                         {
-                            throw new RuntimeException(String.format("There is a binary discrepency between the expected input class %s (%s) and the actual class. Checksum on disk is %x, in patch %x. Things are probably about to go very wrong. Did you put something into the jar file?", patch.targetClassName, patch.sourceClassName, inputChecksum, patch.inputChecksum));
+                            throw new RuntimeException(String.format(
+                                    "There is a binary discrepency between the expected input class %s (%s) and the actual class. Checksum on disk is %x, in patch %x. Things are probably about to go very wrong. Did you put something into the jar file?",
+                                    patch.targetClassName, patch.sourceClassName,
+                                    inputChecksum, patch.inputChecksum));
                         }
+
                         synchronized (patcher)
                         {
                             data = patcher.patch(data, patch.patch);
@@ -128,7 +134,7 @@ public class TaskApplyBinPatches extends CachedTask
                     out.write(data);
                 }
 
-                // add the names to the hashset
+                // Add the names to the hashset.
                 entries.add(e.getName());
             }
 
@@ -171,7 +177,6 @@ public class TaskApplyBinPatches extends CachedTask
                         Throwables.propagateIfPossible(e);
                     }
                 }
-
             });
         }
         finally
@@ -191,14 +196,17 @@ public class TaskApplyBinPatches extends CachedTask
 
     public void setup()
     {
-        Pattern matcher = Pattern.compile(String.format("binpatch/merged/.*.binpatch"));
+        Pattern matcher = Pattern.compile("binpatch/merged/.*.binpatch");
 
         JarInputStream jis;
         try
         {
-            LzmaInputStream binpatchesDecompressed = new LzmaInputStream(new FileInputStream(getPatches()), new Decoder());
+            LzmaInputStream binpatchesDecompressed =
+                    new LzmaInputStream(new FileInputStream(getPatches()), new Decoder());
+
             ByteArrayOutputStream jarBytes = new ByteArrayOutputStream();
             JarOutputStream jos = new JarOutputStream(jarBytes);
+
             Pack200.newUnpacker().unpack(binpatchesDecompressed, jos);
             jis = new JarInputStream(new ByteArrayInputStream(jarBytes.toByteArray()));
         }
@@ -214,9 +222,7 @@ public class TaskApplyBinPatches extends CachedTask
             {
                 JarEntry entry = jis.getNextJarEntry();
                 if (entry == null)
-                {
                     break;
-                }
 
                 if (matcher.matcher(entry.getName()).matches())
                 {
@@ -229,8 +235,11 @@ public class TaskApplyBinPatches extends CachedTask
                 }
             }
             catch (IOException e)
-            {}
-        } while (true);
+            {
+            }
+        }
+        while (true);
+
         log("Read %d binary patches", patchlist.size());
         log("Patch list :\n\t%s", Joiner.on("\n\t").join(patchlist.entrySet()));
     }
@@ -244,16 +253,17 @@ public class TaskApplyBinPatches extends CachedTask
         String sourceClassName = input.readUTF();
         String targetClassName = input.readUTF();
         boolean exists = input.readBoolean();
+
         int inputChecksum = 0;
         if (exists)
-        {
             inputChecksum = input.readInt();
-        }
+
         int patchLength = input.readInt();
         byte[] patchBytes = new byte[patchLength];
         input.readFully(patchBytes);
 
-        return new ClassPatch(name, sourceClassName, targetClassName, exists, inputChecksum, patchBytes);
+        return new ClassPatch(name, sourceClassName, targetClassName,
+                exists, inputChecksum, patchBytes);
     }
 
     private void log(String format, Object... args)
@@ -261,6 +271,7 @@ public class TaskApplyBinPatches extends CachedTask
         getLogger().debug(String.format(format, args));
     }
 
+    @InputFile
     public File getInJar()
     {
         return getProject().file(inJar);
@@ -271,6 +282,8 @@ public class TaskApplyBinPatches extends CachedTask
         this.inJar = inJar;
     }
 
+    @OutputFile
+    @Cached
     public File getOutJar()
     {
         return getProject().file(outJar);
@@ -281,6 +294,7 @@ public class TaskApplyBinPatches extends CachedTask
         this.outJar = outJar;
     }
 
+    @InputFile
     public File getPatches()
     {
         return getProject().file(patches);
@@ -291,6 +305,7 @@ public class TaskApplyBinPatches extends CachedTask
         this.patches = patchesJar;
     }
 
+    @InputFile
     public File getClassJar()
     {
         return getProject().file(classesJar);
@@ -301,6 +316,7 @@ public class TaskApplyBinPatches extends CachedTask
         this.classesJar = extraJar;
     }
 
+    @InputFile
     public File getResourceJar()
     {
         return getProject().file(resourcesJar);
@@ -313,14 +329,15 @@ public class TaskApplyBinPatches extends CachedTask
 
     public static class ClassPatch
     {
-        public final String  name;
-        public final String  sourceClassName;
-        public final String  targetClassName;
+        public final String name;
+        public final String sourceClassName;
+        public final String targetClassName;
         public final boolean existsAtTarget;
-        public final byte[]  patch;
-        public final int     inputChecksum;
+        public final byte[] patch;
+        public final int inputChecksum;
 
-        public ClassPatch(String name, String sourceClassName, String targetClassName, boolean existsAtTarget, int inputChecksum, byte[] patch)
+        public ClassPatch(String name, String sourceClassName, String targetClassName,
+                          boolean existsAtTarget, int inputChecksum, byte[] patch)
         {
             this.name = name;
             this.sourceClassName = sourceClassName;
@@ -333,7 +350,9 @@ public class TaskApplyBinPatches extends CachedTask
         @Override
         public String toString()
         {
-            return String.format("%s : %s => %s (%b) size %d", name, sourceClassName, targetClassName, existsAtTarget, patch.length);
+            return String.format("%s : %s => %s (%b) size %d",
+                    name, sourceClassName, targetClassName,
+                    existsAtTarget, patch.length);
         }
     }
 }
