@@ -857,6 +857,14 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         {
             JavaExec exec = makeTask("runClient", JavaExec.class);
             exec.getOutputs().dir(delayedFile(REPLACE_RUN_DIR));
+            // Prevent Gradle from skipping the run task
+            exec.getOutputs().upToDateWhen(new Spec<Task>() {
+                @Override
+                public boolean isSatisfiedBy(Task task)
+                {
+                    return false;
+                }
+            });
             exec.setMain(GRADLE_START_CLIENT);
             exec.doFirst(new Action<Task>()
             {
@@ -881,6 +889,14 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         {
             JavaExec exec = makeTask("runServer", JavaExec.class);
             exec.getOutputs().dir(delayedFile(REPLACE_RUN_DIR));
+            // Prevent Gradle from skipping the run task
+            exec.getOutputs().upToDateWhen(new Spec<Task>() {
+                @Override
+                public boolean isSatisfiedBy(Task task)
+                {
+                    return false;
+                }
+            });
             exec.setMain(GRADLE_START_SERVER);
             exec.doFirst(new Action<Task>()
             {
@@ -902,7 +918,7 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
             exec.dependsOn("makeStart");
         }
     }
-
+    
     protected final TaskDepDummy getDummyDep(String config, DelayedFile dummy, String taskName)
     {
         TaskDepDummy dummyTask = makeTask(taskName, TaskDepDummy.class);
