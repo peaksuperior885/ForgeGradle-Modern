@@ -62,7 +62,7 @@ import net.minecraftforge.gradle.user.TaskSingleReobf;
  *   "mappings": {
  *     "com.example.mixin.MixinFoo": {
  *       "field_70165_t:D": "field_70165_t:D"   // key = stable searge selector written by the AP
- *     }                                         // value = resolved target name -> this gets remapped
+ *     }                                         // value maps to the resolved target name
  *   }
  * }
  * </pre>

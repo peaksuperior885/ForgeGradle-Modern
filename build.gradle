@@ -56,6 +56,12 @@ repositories {
 configurations {
     shade
     implementation.extendsFrom(shade)
+
+    javadocClasspath {
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom(compileOnly)
+    }
 }
 
 dependencies {
@@ -139,8 +145,6 @@ tasks.named('assemble') {
 }
 
 tasks.named('javadoc', Javadoc) {
-    classpath += configurations.compileOnly
-
     options.links(
             'https://docs.gradle.org/current/javadoc/',
             'https://asm.ow2.io/asm50/javadoc/user/'
