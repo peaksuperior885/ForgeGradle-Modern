@@ -199,6 +199,9 @@ publishing {
     }
 
     repositories {
-        mavenLocal()
+        maven {
+            name = 'localBuild'
+            url = layout.buildDirectory.dir('maven-repo')
+        }
     }
 }
