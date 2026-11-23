@@ -53,9 +53,10 @@ public class GenEclipseRunTask extends DefaultTask
     @Input           private Object mainClass;
     @Input           private Object runDir;
     @Input @Optional private Object runArgs;
-    @Input @Optional private Object jvmArgs;
+    private Object jvmArgs;
     @OutputFile      private Object outputFile;
     //@formatter:on
+
 
     @TaskAction
     public void doTask() throws IOException, ParserConfigurationException, TransformerException
@@ -117,6 +118,8 @@ public class GenEclipseRunTask extends DefaultTask
         this.runArgs = arguments;
     }
 
+    @Input
+    @Optional
     public String getJvmArguments()
     {
         return Constants.resolveString(jvmArgs);

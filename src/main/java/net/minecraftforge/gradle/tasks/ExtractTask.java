@@ -43,23 +43,20 @@ import org.gradle.api.tasks.util.PatternSet;
 
 public class ExtractTask extends CachedTask implements PatternFilterable
 {
-
     @InputFiles
     private LinkedHashSet<Object> sourcePaths      = new LinkedHashSet<Object>();
 
-    @Input
     private PatternSet            patternSet       = new PatternSet();
 
     @Input
     private boolean               includeEmptyDirs = true;
 
-    @Input
-    @Optional
     private boolean               clean            = false;
 
     @Cached
     @OutputDirectory
     private Object                destinationDir   = null;
+
 
     @TaskAction
     public void doTask() throws IOException
@@ -139,6 +136,12 @@ public class ExtractTask extends CachedTask implements PatternFilterable
         return false;
     }
 
+    @Input
+    public boolean isClean()
+    {
+        return clean;
+    }
+
     public boolean shouldClean()
     {
         return clean;
@@ -175,12 +178,14 @@ public class ExtractTask extends CachedTask implements PatternFilterable
     }
 
     @Override
+    @Input
     public Set<String> getExcludes()
     {
         return patternSet.getExcludes();
     }
 
     @Override
+    @Input
     public Set<String> getIncludes()
     {
         return patternSet.getIncludes();

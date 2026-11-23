@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -56,6 +57,7 @@ import org.gradle.api.artifacts.result.ComponentArtifactsResult;
 import org.gradle.api.artifacts.result.DependencyResult;
 import org.gradle.api.artifacts.result.ResolvedArtifactResult;
 import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.FileTree;
 import org.gradle.api.internal.plugins.DslObject;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginConvention;
@@ -65,6 +67,7 @@ import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.ScalaSourceSet;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.bundling.Jar;
+import org.gradle.api.tasks.compile.AbstractCompile;
 import org.gradle.api.tasks.compile.GroovyCompile;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.api.tasks.javadoc.Javadoc;
@@ -101,6 +104,30 @@ import net.minecraftforge.gradle.util.delayed.DelayedFile;
 public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePlugin<T>
 {
     private boolean madeDecompTasks = false; // to gaurd against stupid programmers
+
+    /**
+     * Bookkeeping for the compileJava/compileScala/compileGroovy source redirection done in
+     * {@link #createSourceCopyTasks()}. If a project never actually configures any token
+     * replacements (the common case), there's nothing for the corresponding TaskSourceCopy to do
+     * other than produce a byte-identical copy - so once we know (in afterEvaluate, once the
+     * extension's replacements are final) that a given copy is a no-op, we point the compile task
+     * straight back at the real source and skip the copy. This keeps compiler errors and IDE
+     * "jump to source" pointed at the user's actual files instead of a build/ scratch copy.
+     */
+    private static final class SourceCopyBinding
+    {
+        final AbstractCompile compileTask;
+        final FileTree originalSource;
+
+        SourceCopyBinding(AbstractCompile compileTask, FileTree originalSource)
+        {
+            this.compileTask = compileTask;
+            this.originalSource = originalSource;
+        }
+    }
+
+    private final Map<TaskSourceCopy, SourceCopyBinding> sourceCopyBindings = new HashMap<TaskSourceCopy, SourceCopyBinding>();
+
     private final Closure<Object> makeRunDir = new Closure<Object>(UserBasePlugin.class) {
         public Object call()
         {
@@ -197,6 +224,21 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
             {
                 t.replace(getExtension().getReplacements());
                 t.include(getExtension().getIncludes());
+
+                // getExtension().getReplacements() is the user-facing `replace(...)` DSL - it has
+                // nothing to do with the internal `replacer` (ReplacementProvider) used for things
+                // like {CACHE_DIR}/{RUN_DIR} templating. If the user never configured any token
+                // replacements, this copy is guaranteed to be byte-identical to the real source, so
+                // skip it and compile straight from src/ instead of build/sources/.
+                if (t.getReplacements().isEmpty())
+                {
+                    SourceCopyBinding binding = sourceCopyBindings.get(t);
+                    if (binding != null)
+                    {
+                        binding.compileTask.setSource(binding.originalSource);
+                        t.setEnabled(false);
+                    }
+                }
             }
         });
 
@@ -288,7 +330,7 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
     }
 
     @SuppressWarnings("unchecked")
-	protected void makeDecompTasks(final String globalPattern, final String localPattern, Object inputJar, String inputTask, Object mcpPatchSet)
+    protected void makeDecompTasks(final String globalPattern, final String localPattern, Object inputJar, String inputTask, Object mcpPatchSet)
     {
         madeDecompTasks = true; // to guard against stupid programmers
 
@@ -566,6 +608,8 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
                     JavaCompile compile = (JavaCompile) project.getTasks().getByName(set.getCompileJavaTaskName());
                     compile.dependsOn(task);
                     compile.setSource(dir);
+
+                    sourceCopyBindings.put(task, new SourceCopyBinding(compile, set.getJava()));
                 }
 
                 // scala
@@ -583,6 +627,8 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
                     ScalaCompile compile = (ScalaCompile) project.getTasks().getByName(set.getCompileTaskName("scala"));
                     compile.dependsOn(task);
                     compile.setSource(dir);
+
+                    sourceCopyBindings.put(task, new SourceCopyBinding(compile, langSet.getScala()));
                 }
 
                 // groovy
@@ -600,6 +646,8 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
                     GroovyCompile compile = (GroovyCompile) project.getTasks().getByName(set.getCompileTaskName("groovy"));
                     compile.dependsOn(task);
                     compile.setSource(dir);
+
+                    sourceCopyBindings.put(task, new SourceCopyBinding(compile, langSet.getGroovy()));
                 }
             }
         };
@@ -711,10 +759,10 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
     private Object getFile(String baseDir, String group, String name, String version, String classifier)
     {
         return delayedFile(
-        baseDir + "/" + group.replace('.', '/') + "/" + name + "/" + version + "/" +
-                name + "-" + version + (Strings.isNullOrEmpty(classifier) ? "" : "-" + classifier) + ".jar");
+                baseDir + "/" + group.replace('.', '/') + "/" + name + "/" + version + "/" +
+                        name + "-" + version + (Strings.isNullOrEmpty(classifier) ? "" : "-" + classifier) + ".jar");
     }
-    
+
     protected void doDepAtExtraction()
     {
         TaskExtractDepAts extract = makeTask(TASK_EXTRACT_DEP_ATS, TaskExtractDepAts.class);
@@ -918,7 +966,7 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
             exec.dependsOn("makeStart");
         }
     }
-    
+
     protected final TaskDepDummy getDummyDep(String config, DelayedFile dummy, String taskName)
     {
         TaskDepDummy dummyTask = makeTask(taskName, TaskDepDummy.class);
@@ -1265,23 +1313,23 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         T ext = getExtension();
 
         String[][] config = new String[][]
-        {
-                this.hasClientRun() ? new String[]
                 {
-                        "Minecraft Client",
-                        GRADLE_START_CLIENT,
-                        Joiner.on(' ').join(getClientRunArgs(ext)),
-                        Joiner.on(' ').join(getClientJvmArgs(ext))
-                } : null,
+                        this.hasClientRun() ? new String[]
+                                {
+                                        "Minecraft Client",
+                                        GRADLE_START_CLIENT,
+                                        Joiner.on(' ').join(getClientRunArgs(ext)),
+                                        Joiner.on(' ').join(getClientJvmArgs(ext))
+                                } : null,
 
-                this.hasServerRun() ? new String[]
-                {
-                        "Minecraft Server",
-                        GRADLE_START_SERVER,
-                        Joiner.on(' ').join(getServerRunArgs(ext)),
-                        Joiner.on(' ').join(getServerJvmArgs(ext))
-                } : null
-        };
+                        this.hasServerRun() ? new String[]
+                                {
+                                        "Minecraft Server",
+                                        GRADLE_START_SERVER,
+                                        Joiner.on(' ').join(getServerRunArgs(ext)),
+                                        Joiner.on(' ').join(getServerJvmArgs(ext))
+                                } : null
+                };
 
         for (String[] data : config)
         {
