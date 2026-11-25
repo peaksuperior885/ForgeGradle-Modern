@@ -563,8 +563,11 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         Javadoc javadoc = (Javadoc) project.getTasks().getByName(JavaPlugin.JAVADOC_TASK_NAME);
         javadoc.setClasspath(main.getOutput().plus(main.getCompileClasspath()));
 
-        // libs folder dependencies
-        project.getDependencies().add("implementation", project.fileTree("libs"));
+        // NOTE: No longer auto-adds fileTree("libs") / flatDir contents.
+        // Declare what you need yourself, e.g.:
+        //   implementation fileTree(dir: 'libs', include: ['*.jar'])
+        //   or use a flatDir repository + explicit module notation.
+        // This prevents the plugin from pulling every jar from every flatDir.
 
         // set the compile target
         javaConv.setSourceCompatibility(
@@ -678,8 +681,8 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
                 if (project.getState().getFailure() != null)
                     return;
 
-                // add maven repo
-                addMavenRepo(project, "deobfDeps", delayedFile(DIR_DEOBF_DEPS).call().getAbsoluteFile().toURI().getPath());
+                // add maven repo (use proper file URI so the local deobfDeps repository is correctly recognized)
+                addMavenRepo(project, "deobfDeps", delayedFile(DIR_DEOBF_DEPS).call().getAbsoluteFile().toURI().toString());
 
                 remapDeps(project, project.getConfigurations().getByName(CONFIG_DEOBF_COMPILE), CONFIG_DC_RESOLVED, compileDummy);
                 remapDeps(project, project.getConfigurations().getByName(CONFIG_DEOBF_PROVIDED), CONFIG_DP_RESOLVED, providedDummy);
@@ -690,41 +693,65 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
     @SuppressWarnings("unchecked")
     protected void remapDeps(Project project, Configuration config, String resolvedConfig, Task dummyTask)
     {
-        // only allow maven/ivy dependencies
-        for (Dependency dep : config.getIncoming().getDependencies())
-        {
-            if (!(dep instanceof ExternalModuleDependency))
-            {
-                throw new GradleConfigurationException("Only allowed to use maven dependencies for this. If its a jar file, deobfuscate it yourself.");
-            }
-        }
-
         int taskId = 0;
 
         // FOR SOURCES!
-
         HashMap<ComponentIdentifier, ModuleVersionIdentifier> idMap = Maps.newHashMap();
 
-        // FOR BINARIES
+        // FOR BINARIES – supports both Maven/Ivy module deps *and* flatDir / file dependencies
         for (ResolvedArtifact artifact : config.getResolvedConfiguration().getResolvedArtifacts())
         {
             ModuleVersionIdentifier module = artifact.getModuleVersion().getId();
-            String group = "deobf." + module.getGroup();
+            String rawGroup = module.getGroup();
+            String name = module.getName();
+            String version = module.getVersion();
+
+            // flatDir / file / self-resolving deps commonly come through as group/version = "unspecified"
+            // or empty. Normalize so the local maven layout and dependency notation stay valid.
+            if (rawGroup == null || rawGroup.isEmpty() || "unspecified".equals(rawGroup))
+            {
+                rawGroup = "local";
+            }
+            if (version == null || version.isEmpty() || "unspecified".equals(version))
+            {
+                // Prefer a stable version derived from the file name when possible
+                String fileName = artifact.getFile().getName();
+                if (fileName.endsWith(".jar"))
+                {
+                    fileName = fileName.substring(0, fileName.length() - 4);
+                }
+                // If the artifact name is embedded in the filename, try to keep a reasonable version
+                if (fileName.startsWith(name + "-") && fileName.length() > name.length() + 1)
+                {
+                    version = fileName.substring(name.length() + 1);
+                }
+                else
+                {
+                    version = "1.0";
+                }
+            }
+            if (name == null || name.isEmpty())
+            {
+                name = artifact.getFile().getName().replaceAll("\\.jar$", "");
+            }
+
+            String group = "deobf." + rawGroup;
 
             // Add artifacts that will be remapped to get their sources
             idMap.put(artifact.getId().getComponentIdentifier(), module);
 
             TaskSingleDeobfBin deobf = makeTask(config.getName() + "DeobfDepTask" + (taskId++), TaskSingleDeobfBin.class);
             deobf.setInJar(artifact.getFile());
-            deobf.setOutJar(getFile(DIR_DEOBF_DEPS, group, module.getName(), module.getVersion(), null));
+            deobf.setOutJar(getFile(DIR_DEOBF_DEPS, group, name, version, null));
             deobf.setFieldCsv(delayedFile(CSV_FIELD));
             deobf.setMethodCsv(delayedFile(CSV_METHOD));
             deobf.dependsOn(TASK_EXTRACT_MAPPINGS);
             dummyTask.dependsOn(deobf);
 
-            project.getDependencies().add(resolvedConfig, group + ":" + module.getName() + ":" + module.getVersion());
+            project.getDependencies().add(resolvedConfig, group + ":" + name + ":" + version);
         }
 
+        // Sources resolution only works reliably for real module components
         for (DependencyResult depResult : config.getIncoming().getResolutionResult().getAllDependencies())
         {
             idMap.put(depResult.getFrom().getId(), depResult.getFrom().getModuleVersion());
@@ -738,14 +765,27 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         for (ComponentArtifactsResult comp : result.getResolvedComponents())
         {
             ModuleVersionIdentifier module = idMap.get(comp.getId());
-            String group = "deobf." + module.getGroup();
+            if (module == null)
+                continue;
+
+            String rawGroup = module.getGroup();
+            String name = module.getName();
+            String version = module.getVersion();
+            if (rawGroup == null || rawGroup.isEmpty() || "unspecified".equals(rawGroup))
+                rawGroup = "local";
+            if (version == null || version.isEmpty() || "unspecified".equals(version))
+                version = "1.0";
+            if (name == null || name.isEmpty())
+                continue;
+
+            String group = "deobf." + rawGroup;
 
             for (ArtifactResult art : comp.getArtifacts(SourcesArtifact.class))
             {
                 // there can only be One!
                 RemapSources remap = makeTask(config.getName() + "RemapDepSourcesTask" + (taskId++), RemapSources.class);
                 remap.setInJar(((ResolvedArtifactResult) art).getFile());
-                remap.setOutJar(getFile(DIR_DEOBF_DEPS, group, module.getName(), module.getVersion(), "sources"));
+                remap.setOutJar(getFile(DIR_DEOBF_DEPS, group, name, version, "sources"));
                 remap.setFieldsCsv(delayedFile(CSV_FIELD));
                 remap.setMethodsCsv(delayedFile(CSV_METHOD));
                 remap.setParamsCsv(delayedFile(CSV_PARAM));
@@ -767,6 +807,8 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
     {
         TaskExtractDepAts extract = makeTask(TASK_EXTRACT_DEP_ATS, TaskExtractDepAts.class);
         extract.addCollection("implementation");
+        extract.addCollection("runtimeOnly");
+        extract.addCollection("compileOnly");
         extract.addCollection(CONFIG_PROVIDED);
         extract.addCollection(CONFIG_DEOBF_COMPILE);
         extract.addCollection(CONFIG_DEOBF_PROVIDED);
@@ -1199,8 +1241,21 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         // not provided here, becuase idea actually removes those from the runtime config
         ideaConv.getModule().getScopes().get("COMPILE").get("plus").add(project.getConfigurations().getByName(CONFIG_PROVIDED));
 
-        // add deobf task dependencies
+        // Explicitly expose the *deobfuscated* dependency configurations to IDEA.
+        // Without this, IDEA frequently attaches the original (stock / obfuscated) jar
+        // from a flatDir or the original repository instead of the remapped one produced
+        // by the deobf pipeline.
+        ideaConv.getModule().getScopes().get("COMPILE").get("plus").add(project.getConfigurations().getByName(CONFIG_DC_RESOLVED));
+        ideaConv.getModule().getScopes().get("COMPILE").get("plus").add(project.getConfigurations().getByName(CONFIG_DP_RESOLVED));
+
+        // Ensure the deobf tasks run before IDEA generates the .iml / module libraries
         project.getTasks().getByName("ideaModule").dependsOn(TASK_DD_COMPILE, TASK_DD_PROVIDED).doFirst(makeRunDir);
+        // Also cover the newer IDEA import / sync tasks
+        project.getTasks().matching(t -> t.getName().startsWith("idea")).configureEach(t -> {
+            if (!"ideaModule".equals(t.getName())) {
+                t.dependsOn(TASK_DD_COMPILE, TASK_DD_PROVIDED);
+            }
+        });
 
         // fix the idea bug
         ideaConv.getModule().setInheritOutputDirs(true);
